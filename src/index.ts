@@ -199,7 +199,9 @@ const server = new McpServer({
   version: "0.0.1",
   capabilities: {
     resources: {},
-    tools: {}, // We'll register tools directly using server.tool()
+    tools: {
+      listChanged: true, // Notify clients when tools change
+    },
   },
 });
 
@@ -207,7 +209,7 @@ const server = new McpServer({
 server.tool(
   "list-deployments",
   "List all registered Restate deployments",
-  {},
+  {}, // Empty object for no parameters
   async () => {
     const result = await restateApi.listDeployments();
     return {
@@ -292,7 +294,7 @@ server.tool(
 server.tool(
   "list-services",
   "List all registered services in the Restate server",
-  {},
+  {}, // Empty object for no parameters
   async () => {
     const result = await restateApi.listServices();
     return {
