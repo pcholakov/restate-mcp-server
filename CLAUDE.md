@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 - Build: `npm run build` (TypeScript compilation)
 - Run: `npm run server:dev` (Run with tsx directly)
+- The server receives commands via stdio
 
 ## Code Style Guidelines
 - TypeScript with strict mode enabled
@@ -20,6 +21,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Primary: `@modelcontextprotocol/sdk` for MCP server implementation
 - Validation: `zod` for schema validation
 - No testing framework currently configured
+
+## Restate API Integration
+- Service management is done via Restate Admin API (default: http://localhost:9070)
+- API schemas defined following the OpenAPI spec in resources/openapi-admin.json
+- All API requests include `User-Agent: restate-mcp-server/0.0.1`
 
 ## Formatting & Naming
 - Prefer camelCase for variables and functions
