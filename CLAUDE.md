@@ -32,3 +32,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - PascalCase for classes and types
 - Use descriptive names for variables and functions
 - Add type annotations for function parameters and return values
+
+## Functionality
+- Expose basic list/get/update/delete functionality for managing services and deployments
+- Restate supports plain Services which don't have long-lived state beyond an invocation, Virtual Objects, which have durable long-lived identity, and Workflows which are like Virtual Objects but can only execute once, with a specific idempotency key, and provide a nicer way to model long-running event-driven processes
+- Expose tools based on the Introspection API to allow for querying running invocations, as well as cancel or kill stuck ones
+- Provide SQL querying capabilities over KV state via the `/query` endpoint with the query-kv-state tool
+- Support viewing service state data with appropriate error handling for different response types
