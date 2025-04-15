@@ -193,12 +193,72 @@ const restateApi = {
   },
 };
 
+// Define resources for providing documentation and context to clients
+const restateOverviewContent = `# Restate Architecture Overview
+
+Restate is a distributed runtime for reliable, stateful services.
+
+## Key Concepts
+
+- **Deployments**: Services are registered via deployments that provide an HTTP endpoint or Lambda ARN
+- **Services**: Individual services exposed by a deployment that can be invoked
+- **Handlers**: Functions within a service that can be called
+- **Service Types**:
+  - *Service*: Stateless service
+  - *VirtualObject*: Stateful service with exclusive access to state
+  - *Workflow*: Long-running, restartable service flow
+
+## API Structure
+
+- **/deployments**: Register, list, and manage service deployments
+- **/services**: View and configure services
+- **/services/{service}/handlers**: View service handlers and their metadata
+- **/subscriptions**: Manage event subscriptions between services
+`;
+
+const restateToolsDocContent = `# Restate Management Tools
+
+This MCP server provides tools to interact with a Restate admin API.
+
+## Available Tools
+
+- **list-deployments**: List all registered service deployments
+- **get-deployment**: Get details of a specific deployment by ID
+- **create-deployment**: Register a new deployment (HTTP endpoint or Lambda)
+- **delete-deployment**: Remove a deployment from Restate
+- **list-services**: List all available services
+- **get-service**: Get details of a specific service
+- **modify-service**: Configure a service (visibility, retention, etc.)
+
+## Common Operations
+
+### Registering a Deployment
+Use \`create-deployment\` with a service URI to register a new deployment:
+\`\`\`
+{
+  "uri": "http://localhost:8080",
+  "force": true
+}
+\`\`\`
+
+### Configuring Service Visibility
+Use \`modify-service\` to change service accessibility:
+\`\`\`
+{
+  "serviceName": "my-service",
+  "isPublic": true
+}
+\`\`\`
+`;
+
 // Create server instance
 const server = new McpServer({
   name: "restate",
   version: "0.0.1",
   capabilities: {
-    resources: {},
+    resources: {
+      manual: true, // Enables manual resource registration
+    },
     tools: {
       listChanged: true, // Notify clients when tools change
     },
@@ -352,6 +412,43 @@ server.tool(
         {
           type: "text",
           text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// Register documentation resources
+server.resource(
+  "restate-overview",
+  "restate-overview", 
+  {
+    description: "Overview of Restate architecture and concepts",
+  },
+  async () => {
+    return {
+      contents: [
+        {
+          uri: "restate-overview.md",
+          text: restateOverviewContent,
+        },
+      ],
+    };
+  }
+);
+
+server.resource(
+  "restate-tools-guide",
+  "restate-tools-guide",
+  {
+    description: "Documentation for using Restate management tools",
+  },
+  async () => {
+    return {
+      contents: [
+        {
+          uri: "restate-tools-guide.md",
+          text: restateToolsDocContent,
         },
       ],
     };
