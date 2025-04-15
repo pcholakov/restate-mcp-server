@@ -193,117 +193,168 @@ const restateApi = {
   },
 };
 
-// Tool schemas
-const listDeploymentsSchema = z.object({});
-type ListDeploymentsInput = z.infer<typeof listDeploymentsSchema>;
-
-const getDeploymentSchema = z.object({
-  deploymentId: z.string().describe("Deployment identifier"),
-});
-type GetDeploymentInput = z.infer<typeof getDeploymentSchema>;
-
-const createDeploymentSchema = z.object({
-  deployment: RegisterDeploymentRequestSchema.describe("Deployment configuration"),
-});
-type CreateDeploymentInput = z.infer<typeof createDeploymentSchema>;
-
-const deleteDeploymentSchema = z.object({
-  deploymentId: z.string().describe("Deployment identifier"),
-  force: z.boolean().default(true).describe("Force delete the deployment"),
-});
-type DeleteDeploymentInput = z.infer<typeof deleteDeploymentSchema>;
-
-const listServicesSchema = z.object({});
-type ListServicesInput = z.infer<typeof listServicesSchema>;
-
-const getServiceSchema = z.object({
-  serviceName: z.string().describe("Fully qualified service name"),
-});
-type GetServiceInput = z.infer<typeof getServiceSchema>;
-
-const modifyServiceSchema = z.object({
-  serviceName: z.string().describe("Fully qualified service name"),
-  isPublic: z.boolean().optional().describe("Make service publicly accessible"),
-  idempotencyRetention: z.string().optional().describe("Idempotency retention duration"),
-});
-type ModifyServiceInput = z.infer<typeof modifyServiceSchema>;
-
 // Create server instance
 const server = new McpServer({
   name: "restate",
   version: "0.0.1",
   capabilities: {
     resources: {},
-    tools: {
-      listDeployments: {
-        description: "List all registered Restate deployments",
-        schema: listDeploymentsSchema,
-        execute: async (_: ListDeploymentsInput) => {
-          const result = await restateApi.listDeployments();
-          return result;
-        },
-      },
-      getDeployment: {
-        description: "Get a specific Restate deployment by ID",
-        schema: getDeploymentSchema,
-        execute: async ({ deploymentId }: GetDeploymentInput) => {
-          const result = await restateApi.getDeployment(deploymentId);
-          return result;
-        },
-      },
-      createDeployment: {
-        description: "Register a new deployment with the Restate server",
-        schema: createDeploymentSchema,
-        execute: async ({ deployment }: CreateDeploymentInput) => {
-          const result = await restateApi.createDeployment(deployment);
-          return result;
-        },
-      },
-      deleteDeployment: {
-        description: "Delete a deployment from the Restate server",
-        schema: deleteDeploymentSchema,
-        execute: async ({ deploymentId, force }: DeleteDeploymentInput) => {
-          const result = await restateApi.deleteDeployment(deploymentId, force);
-          return result;
-        },
-      },
-      listServices: {
-        description: "List all registered services in the Restate server",
-        schema: listServicesSchema,
-        execute: async (_: ListServicesInput) => {
-          const result = await restateApi.listServices();
-          return result;
-        },
-      },
-      getService: {
-        description: "Get a specific service by name",
-        schema: getServiceSchema,
-        execute: async ({ serviceName }: GetServiceInput) => {
-          const result = await restateApi.getService(serviceName);
-          return result;
-        },
-      },
-      modifyService: {
-        description: "Modify a registered service configuration",
-        schema: modifyServiceSchema,
-        execute: async ({ serviceName, isPublic, idempotencyRetention }: ModifyServiceInput) => {
-          const options: { public?: boolean, idempotency_retention?: string } = {};
-          
-          if (isPublic !== undefined) {
-            options.public = isPublic;
-          }
-          
-          if (idempotencyRetention !== undefined) {
-            options.idempotency_retention = idempotencyRetention;
-          }
-          
-          const result = await restateApi.modifyService(serviceName, options);
-          return result;
-        },
-      },
-    },
+    tools: {}, // We'll register tools directly using server.tool()
   },
 });
+
+// Register tools using the server.tool() method to ensure proper exposure
+server.tool(
+  "list-deployments",
+  "List all registered Restate deployments",
+  {},
+  async () => {
+    const result = await restateApi.listDeployments();
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "get-deployment",
+  "Get a specific Restate deployment by ID",
+  {
+    deploymentId: z.string().describe("Deployment identifier"),
+  },
+  async ({ deploymentId }) => {
+    const result = await restateApi.getDeployment(deploymentId);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "create-deployment",
+  "Register a new deployment with the Restate server",
+  {
+    uri: z.string().describe("URI of the deployment to register"),
+    additionalHeaders: z.record(z.string()).optional().describe("Optional additional headers"),
+    useHttp11: z.boolean().optional().describe("Use HTTP/1.1 instead of HTTP/2"),
+    force: z.boolean().optional().describe("Force registration even if deployment exists"),
+  },
+  async ({ uri, additionalHeaders, useHttp11, force }) => {
+    const request = {
+      uri,
+      additional_headers: additionalHeaders,
+      use_http_11: useHttp11,
+      force,
+    };
+    
+    const result = await restateApi.createDeployment(request);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "delete-deployment",
+  "Delete a deployment from the Restate server",
+  {
+    deploymentId: z.string().describe("Deployment identifier"),
+    force: z.boolean().default(true).describe("Force delete the deployment"),
+  },
+  async ({ deploymentId, force }) => {
+    await restateApi.deleteDeployment(deploymentId, force);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Successfully deleted deployment: ${deploymentId}`,
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "list-services",
+  "List all registered services in the Restate server",
+  {},
+  async () => {
+    const result = await restateApi.listServices();
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "get-service",
+  "Get a specific service by name",
+  {
+    serviceName: z.string().describe("Fully qualified service name"),
+  },
+  async ({ serviceName }) => {
+    const result = await restateApi.getService(serviceName);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "modify-service",
+  "Modify a registered service configuration",
+  {
+    serviceName: z.string().describe("Fully qualified service name"),
+    isPublic: z.boolean().optional().describe("Make service publicly accessible"),
+    idempotencyRetention: z.string().optional().describe("Idempotency retention duration"),
+  },
+  async ({ serviceName, isPublic, idempotencyRetention }) => {
+    const options: { public?: boolean, idempotency_retention?: string } = {};
+    
+    if (isPublic !== undefined) {
+      options.public = isPublic;
+    }
+    
+    if (idempotencyRetention !== undefined) {
+      options.idempotency_retention = idempotencyRetention;
+    }
+    
+    const result = await restateApi.modifyService(serviceName, options);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
 
 // Start the server
 const transport = new StdioServerTransport();
