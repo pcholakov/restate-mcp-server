@@ -78,6 +78,30 @@ const ListServicesResponseSchema = z.object({
   services: z.array(ServiceMetadataSchema),
 });
 
+// Invocation schema
+const InvocationSchema = z.object({
+  id: z.string(),
+  service: z.string(),
+  handler: z.string(),
+  status: z.enum(["Running", "Completed", "Failed", "Suspended"]),
+  started_at: z.string(),
+  completed_at: z.string().nullable().optional(),
+  object_key: z.string().optional(),
+});
+
+const ListInvocationsResponseSchema = z.object({
+  invocations: z.array(InvocationSchema),
+});
+
+// KV State query schema
+const KVStateQueryRequestSchema = z.object({
+  query: z.string()
+});
+
+const KVStateQueryResponseSchema = z.object({
+  rows: z.array(z.record(z.string(), z.any())),
+});
+
 // Registration request schemas
 const HttpRegisterDeploymentRequestSchema = z.object({
   uri: z.string(),
@@ -191,6 +215,49 @@ const restateApi = {
     });
     return ServiceMetadataSchema.parse(data);
   },
+
+  async listInvocations() {
+    // This endpoint isn't officially documented but follows REST conventions
+    const data = await fetchWithOptions(`${RESTATE_API_BASE}/invocations`);
+    return ListInvocationsResponseSchema.parse(data);
+  },
+
+  async queryKVState(query: string) {
+    // Uses direct HTTP request with proper error handling
+    try {
+      // Directly use fetch with proper handling for potential binary response
+      const response = await fetch(`${RESTATE_API_BASE}/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': USER_AGENT,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ query })
+      });
+      
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error: ${response.status} ${response.statusText} - ${text}`);
+      }
+      
+      // Check content type to avoid parsing binary data
+      const contentType = response.headers.get('Content-Type');
+      if (contentType && !contentType.includes('application/json')) {
+        throw new Error(`Unexpected response type: ${contentType}`);
+      }
+      
+      // Get as text first to catch any JSON parse errors
+      const textResponse = await response.text();
+      try {
+        return JSON.parse(textResponse);
+      } catch (e) {
+        throw new Error(`Invalid JSON response: ${textResponse.substring(0, 50)}...`);
+      }
+    } catch (error) {
+      throw new Error(`SQL query error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  },
 };
 
 // Define resources for providing documentation and context to clients
@@ -229,6 +296,8 @@ This MCP server provides tools to interact with a Restate admin API.
 - **list-services**: List all available services
 - **get-service**: Get details of a specific service
 - **modify-service**: Configure a service (visibility, retention, etc.)
+- **list-invocations**: List all running service invocations
+- **query-kv-state**: Query service KV state using SQL syntax
 
 ## Common Operations
 
@@ -248,6 +317,40 @@ Use \`modify-service\` to change service accessibility:
   "serviceName": "my-service",
   "isPublic": true
 }
+\`\`\`
+
+### Listing Running Invocations
+Use \`list-invocations\` to see all currently running service invocations:
+\`\`\`
+{}
+\`\`\`
+
+### Querying Service State
+Use \`query-kv-state\` to query a service's key-value state using SQL:
+\`\`\`
+{
+  "query": "SELECT * FROM state WHERE service_name = 'greeter'"
+}
+\`\`\`
+
+The SQL query uses table name 'state' with these common columns:
+- service_name: Name of the service
+- service_key: Virtual object key (same as objectKey)
+- key: The KV state key
+- value_utf8: String representation of the value
+- value: Binary representation of the value
+- partition_key: Internal Restate partition identifier
+
+Examples:
+\`\`\`
+// Query all greeter service keys
+"query": "SELECT * FROM state WHERE service_name = 'greeter'"
+
+// Query specific object key's state
+"query": "SELECT * FROM state WHERE service_name = 'greeter' AND service_key = 'world'"
+
+// Query by specific value
+"query": "SELECT * FROM state WHERE key = 'count' AND value_utf8 = '2'"
 \`\`\`
 `;
 
@@ -407,6 +510,42 @@ server.tool(
     }
     
     const result = await restateApi.modifyService(serviceName, options);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "list-invocations",
+  "List all running service invocations",
+  {}, // Empty object for no parameters
+  async () => {
+    const result = await restateApi.listInvocations();
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "query-kv-state",
+  "Query service KV state using SQL syntax. The table name is 'state' and common columns include 'service_name', 'service_key' (object_key), 'key', and 'value_utf8'.",
+  {
+    query: z.string().describe("SQL query to execute against the KV state (use 'state' as the table name, not 'kv_state')"),
+  },
+  async ({ query }) => {
+    const result = await restateApi.queryKVState(query);
     return {
       content: [
         {
