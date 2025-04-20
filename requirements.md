@@ -52,6 +52,121 @@ Restate handles idempotency, retries, queueing, and event ordrering within the s
 
 ---
 
+# Primer on building with Restate
+
+This guide takes you through your first steps with Restate.
+
+We will run a simple Restate Greeter service that listens on port `9080` and responds with `You said hi to <name>!` to a `greet` request.
+
+Restate server is a single self-contained binary. No external dependencies needed.
+
+```sh
+restate-server
+```
+
+We tell Restate where the service is running, so Restate can discover and register the services and handlers behind this endpoint. You can do this via the UI (`http://localhost:9070`) or via:
+
+If you run Restate with Docker, use `http://host.docker.internal:9080` instead of `http://localhost:9080`.
+
+```sh
+curl localhost:8080/Greeter/greet --json '"Sarah"'
+```
+
+The invocation you just sent used Durable Execution to make sure the request ran till completion. For each request, it sent a notification, slept for a second, and then sent a reminder.
+
+```ts
+import * as restate from "@restatedev/restate-sdk";
+import { sendNotification, sendReminder } from "./utils";
+
+restate
+  .endpoint()
+  .bind(
+    restate.service({
+      name: "Greeter",
+      handlers: {
+        greet: async (ctx: restate.Context, name: string) => {
+          // Durably execute a set of steps; resilient against failures
+          const greetingId = ctx.rand.uuidv4();
+          await ctx.run(() => sendNotification(greetingId, name));
+          await ctx.sleep(1000);
+          await ctx.run(() => sendReminder(greetingId));
+
+          // Respond to caller
+          return \`You said hi to ${name}!\`;
+        },
+      },
+    }),
+  )
+  .listen(9080);
+```
+
+---
+
+# Testing Restate services
+
+The Typescript SDK has a companion library which makes it easy to test against a Restate container: `@restatedev/restate-sdk-testcontainers`.
+
+`RestateTestEnvironment.start` creates a Restate container and executes a user-provided closure to register services. An optional second argument allows you to specify a custom [Testcontainer](https://node.testcontainers.org/) for Restate.
+
+```ts
+import { RestateTestEnvironment } from "@restatedev/restate-sdk-testcontainers";
+import * as clients from "@restatedev/restate-sdk-clients";
+
+describe("ExampleObject", () => {
+  let restateTestEnvironment: RestateTestEnvironment;
+  let restateIngress: clients.Ingress;
+
+  beforeAll(async () => {
+    restateTestEnvironment = await RestateTestEnvironment.start(
+      (restateServer) => restateServer.bind(router)
+    );
+
+    restateIngress = clients.connect({ url: restateTestEnvironment.baseUrl() });
+
+  }, 20\_000);
+
+  afterAll(async () => {
+    if (restateTestEnvironment !== undefined) {
+      await restateTestEnvironment.stop();
+    }
+  });
+```
+
+## Calling services
+
+The Restate ingress client can be used as usual:
+
+```ts
+it("Can call methods", async () => {
+  const client = restateIngress.objectClient(router, "myKey");
+  await client.greet("Test!");
+});
+```
+
+## Checking and mutating state
+
+The `stateOf` method on the `RestateTestEnvironment` class can be used to obtain a handle on the Virtual Object / Workflow state for a particular key.
+
+```ts
+it("Can read state", async () => {
+  const state = restateTestEnvironment.stateOf(router, "myKey");
+
+  expect(await state.getAll()).toStrictEqual({});
+  expect(await state.get("count")).toBeNull();
+});
+
+it("Can write state", async () => {
+  const state = restateTestEnvironment.stateOf(router, "myKey");
+
+  await state.setAll({
+    count: 123,
+  });
+  await state.set("count", 321);
+});
+```
+
+---
+
 # Introspection SQL schema reference
 
 ## Table: state
