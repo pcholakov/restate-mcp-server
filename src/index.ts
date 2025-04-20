@@ -551,23 +551,6 @@ server.tool(
 );
 
 server.tool(
-  "list-invocations",
-  "List all running service invocations",
-  {}, // Empty object for no parameters
-  async () => {
-    const result = await restateApi.listInvocations();
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(result, null, 2),
-        },
-      ],
-    };
-  },
-);
-
-server.tool(
   "query-kv-state",
   "Query service KV state using SQL syntax. The table name is 'state' and common columns include 'service_name', 'service_key' (object_key), 'key', and 'value_utf8'.",
   {
