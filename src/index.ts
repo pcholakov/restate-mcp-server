@@ -5,17 +5,10 @@ import { z } from "zod";
 // Define fetch type for Node.js environment
 declare const fetch: (url: string, options?: RequestInit) => Promise<Response>;
 
-const RESTATE_API_BASE = "http://localhost:9070";
+const RESTATE_API_BASE = process.env.RESTATE_API_BASE ?? "http://localhost:9070";
 const USER_AGENT = "restate-mcp-server/0.0.1";
 
 // Schema definitions for Restate API responses
-// Used for documentation and type checking
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const ErrorDescriptionSchema = z.object({
-  message: z.string(),
-  restate_code: z.string().nullable(),
-});
-
 const ServiceNameRevPairSchema = z.object({
   name: z.string(),
   revision: z.number().int().min(0),
@@ -81,33 +74,6 @@ const ServiceMetadataSchema = z.object({
 
 const ListServicesResponseSchema = z.object({
   services: z.array(ServiceMetadataSchema),
-});
-
-// Invocation schema
-const InvocationSchema = z.object({
-  id: z.string(),
-  service: z.string(),
-  handler: z.string(),
-  status: z.enum(["Running", "Completed", "Failed", "Suspended"]),
-  started_at: z.string(),
-  completed_at: z.string().nullable().optional(),
-  object_key: z.string().optional(),
-});
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const ListInvocationsResponseSchema = z.object({
-  invocations: z.array(InvocationSchema),
-});
-
-// KV State query schema
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const KVStateQueryRequestSchema = z.object({
-  query: z.string(),
-});
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const KVStateQueryResponseSchema = z.object({
-  rows: z.array(z.record(z.string(), z.any())),
 });
 
 // Registration request schemas

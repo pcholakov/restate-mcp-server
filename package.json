@@ -5,11 +5,12 @@
   },
   "scripts": {
     "build": "tsc",
+    "compile": "tsc --noEmit",
     "check": "npm run lint && npm run test",
     "test": "vitest --run",
     "server:dev": "tsx src/index.ts",
     "simple-service:dev": "tsx src/test/simple-service.ts",
-    "lint": "eslint . --ext .ts && tsc --noEmit && npm run format:check",
+    "lint": "eslint . --ext .ts && npm run compile && npm run format:check",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\""

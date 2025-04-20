@@ -1,3 +1,5 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import * as clients from "@restatedev/restate-sdk-clients";
 import { RestateTestEnvironment } from "@restatedev/restate-sdk-testcontainers";
 import { ChildProcess, spawn } from "child_process";
@@ -7,7 +9,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { simpleService } from "./simple-service.js";
 
-// Schema definitions for Restate API responses
 const ServiceNameRevPairSchema = z.object({
   name: z.string(),
   revision: z.number().int().min(0),
@@ -49,9 +50,9 @@ const RegisterDeploymentResponseSchema = z.object({
 });
 
 let restateTestEnvironment: RestateTestEnvironment;
-let restateClient: clients.Ingress;
 let simpleServiceProcess: ChildProcess;
-let originalRestateApiBase: string | undefined;
+let restateClient: clients.Ingress;
+let mcpClient: Client;
 
 // Implementation of the Restate service management for testing
 async function fetchWithOptions(url: string, options: RequestInit = {}) {
@@ -112,9 +113,6 @@ const testRestateApi = {
 };
 
 beforeAll(async () => {
-  // Save original RESTATE_API_BASE
-  originalRestateApiBase = process.env.RESTATE_API_BASE;
-
   // Start Restate server
   restateTestEnvironment = await RestateTestEnvironment.start(() =>
     new GenericContainer("restatedev/restate:1.3")
@@ -142,13 +140,32 @@ beforeAll(async () => {
   // Wait for service to start
   await setTimeout(2000);
 
-  // Set up environment variable pointing to our Restate server
+  // TODO: remove
   process.env.RESTATE_API_BASE = restateTestEnvironment.adminAPIBaseUrl();
   console.log(`Restate Admin API URL: ${process.env.RESTATE_API_BASE}`);
+
+  const transport = new StdioClientTransport({
+    command: "tsx",
+    args: ["src/index.ts"],
+    env: {
+      ...process.env,
+      RESTATE_API_BASE: restateTestEnvironment.adminAPIBaseUrl(),
+    },
+  });
+
+  mcpClient = new Client({
+    name: "e2e-test",
+    version: "0.0.1",
+  });
+
+  await mcpClient.connect(transport);
 });
 
 afterAll(async () => {
-  // Clean up resources
+  if (mcpClient) {
+    await mcpClient.close();
+  }
+
   if (simpleServiceProcess) {
     simpleServiceProcess.kill();
   }
@@ -156,16 +173,15 @@ afterAll(async () => {
   if (restateTestEnvironment) {
     await restateTestEnvironment.stop();
   }
-
-  // Restore original RESTATE_API_BASE
-  if (originalRestateApiBase) {
-    process.env.RESTATE_API_BASE = originalRestateApiBase;
-  } else {
-    delete process.env.RESTATE_API_BASE;
-  }
 });
 
 describe("Restate MCP server", () => {
+  it("is running", async () => {
+    await mcpClient.ping();
+    const tools = await mcpClient.listTools();
+    expect(tools).toBeDefined();
+  });
+
   it("can deploy and list services", async () => {
     // Deploy the service using the Restate API directly
     const deploymentData = await testRestateApi.createDeployment({
@@ -176,26 +192,31 @@ describe("Restate MCP server", () => {
     expect(deploymentData).toBeDefined();
     expect(deploymentData.id).toBeDefined();
 
-    // List deployments
-    const listData = await testRestateApi.listDeployments();
+    const listDeploymentsResponse = (await mcpClient.callTool({
+      name: "list-deployments",
+      arguments: {},
+    })) as { content: [{ type; text: string }] };
 
-    expect(listData).toBeDefined();
-    expect(listData.deployments).toBeInstanceOf(Array);
+    console.log("Raw list-deployments response:", listDeploymentsResponse);
 
-    // Find our deployment in the list
-    const foundDeployment = listData.deployments.find((d) => d.id === deploymentData.id);
+    expect(listDeploymentsResponse.content[0].type).toBe("text");
+    const deploymentParsed = JSON.parse(listDeploymentsResponse.content[0].text);
 
+    console.log("Parsed list-deployments response:", JSON.stringify(deploymentParsed, null, 2));
+
+    const deployments = ListDeploymentsResponseSchema.parse(deploymentParsed);
+
+    const foundDeployment = deployments.deployments.find(
+      (d: { id: string }) => d.id === deploymentData.id,
+    );
     expect(foundDeployment).toBeDefined();
 
-    // Check if it's an HTTP deployment with the expected URI
     if (foundDeployment && "uri" in foundDeployment) {
       // The URI might have a trailing slash, so we'll check if it starts with the expected value
-      expect(foundDeployment.uri.startsWith("http://host.docker.internal:9080")).toBe(true);
+      expect(foundDeployment?.uri?.startsWith("http://host.docker.internal:9080")).toBe(true);
     }
 
-    // Verify the service is registered
     const serviceFound = deploymentData.services.some((s) => s.name === "SimpleService");
-
     expect(serviceFound).toBe(true);
   });
 });
