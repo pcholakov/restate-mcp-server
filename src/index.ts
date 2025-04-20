@@ -108,23 +108,30 @@ const restateApi = {
     return ServiceMetadataSchema.parse(data);
   },
 
-  async listInvocations() {
-    // Query the sys_invocation table via SQL introspection
-    const query = "SELECT * FROM sys_invocation WHERE status = 'Running'";
+  async listInvocations(status: string = "running") {
+    const query = `SELECT * FROM sys_invocation WHERE status = '${status}'`;
     const result = await this.queryKVState(query);
 
     // Transform the result to match the expected schema
     const invocations = (result.rows || []).map((row: Record<string, unknown>) => ({
       id: row.id || "",
-      service: row.service_name || "",
-      handler: row.handler_name || "",
-      status: row.status || "Running",
-      started_at: row.started_at || new Date().toISOString(),
+      service_name: row.target_service_name || "",
+      handler_name: row.target_handler_name || "",
+      status: row.status || "running",
+      started_at: row.running_at || new Date().toISOString(),
       completed_at: row.completed_at || null,
-      object_key: row.object_key || undefined,
+      service_key: row.target_service_key || undefined,
     }));
 
     return { invocations };
+  },
+
+  async cancelInvocation(invocationId: string, mode: string = "Cancel") {
+    // Call the DELETE endpoint to cancel/kill/purge an invocation
+    await fetchWithOptions(`${RESTATE_API_BASE}/invocations/${invocationId}?mode=${mode}`, {
+      method: "DELETE",
+    });
+    return { success: true };
   },
 
   async queryKVState(query: string) {
@@ -554,6 +561,43 @@ server.tool(
         {
           type: "text",
           text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  "list-invocations",
+  "List all running invocations in the Restate server",
+  {}, // Empty object for no parameters
+  async () => {
+    const result = await restateApi.listInvocations();
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  "cancel-invocation",
+  "Cancel a running invocation in the Restate server",
+  {
+    invocationId: z.string().describe("Invocation identifier to cancel"),
+    mode: z.enum(["Cancel", "Kill", "Purge"]).default("Cancel").describe("Cancellation mode"),
+  },
+  async ({ invocationId, mode }) => {
+    await restateApi.cancelInvocation(invocationId, mode);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Successfully cancelled invocation: ${invocationId} with mode: ${mode}`,
         },
       ],
     };

@@ -138,6 +138,56 @@ describe("Invocation management", () => {
 
     console.log(`Submitted long-running invocation: ${handle.invocationId}`);
 
-    // todo: list invocations, cancel long-running, list again to confirm it's gone
+    // List invocations to check if our long-running invocation is there
+    const listInvocationsResponse = (await mcpClient.callTool({
+      name: "list-invocations",
+      arguments: {},
+    })) as { content: [{ type; text: string }] };
+
+    expect(listInvocationsResponse.content[0].type).toBe("text");
+    const invocationsData = JSON.parse(listInvocationsResponse.content[0].text);
+    console.log("Running invocations:", JSON.stringify(invocationsData, null, 2));
+
+    // Verify our invocation is in the list
+    const foundInvocation = invocationsData.invocations.some(
+      (inv: { id: string }) => inv.id === handle.invocationId,
+    );
+    expect(foundInvocation).toBe(true);
+
+    // Cancel the invocation
+    const cancelResponse = (await mcpClient.callTool({
+      name: "cancel-invocation",
+      arguments: {
+        invocationId: handle.invocationId,
+        mode: "Cancel",
+      },
+    })) as { content: [{ type; text: string }] };
+
+    expect(cancelResponse.content[0].type).toBe("text");
+    console.log("Cancel response:", cancelResponse.content[0].text);
+
+    // List invocations again to verify the invocation is gone
+    const listInvocationsAfterCancelResponse = (await mcpClient.callTool({
+      name: "list-invocations",
+      arguments: {},
+    })) as { content: [{ type; text: string }] };
+
+    expect(listInvocationsAfterCancelResponse.content[0].type).toBe("text");
+    const invocationsAfterCancelData = JSON.parse(
+      listInvocationsAfterCancelResponse.content[0].text,
+    );
+    console.log(
+      "Running invocations after cancel:",
+      JSON.stringify(invocationsAfterCancelData, null, 2),
+    );
+
+    // Wait for the cancelation to reflect; we've seen the test below fail occasionally without the wait
+    await setTimeout(100);
+
+    // Verify our invocation is no longer in the list
+    const invocationStillExists = invocationsAfterCancelData.invocations.some(
+      (inv: { id: string }) => inv.id === handle.invocationId,
+    );
+    expect(invocationStillExists).toBe(false);
   });
 });
