@@ -6,111 +6,13 @@ import { ChildProcess, spawn } from "child_process";
 import { GenericContainer } from "testcontainers";
 import { setTimeout } from "timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
+import { ListDeploymentsResponseSchema } from "../../src/schemas.js";
 import { simpleService } from "./simple-service.js";
-
-const ServiceNameRevPairSchema = z.object({
-  name: z.string(),
-  revision: z.number().int().min(0),
-});
-
-// Deployment response schemas
-const DeploymentBaseSchema = z.object({
-  id: z.string(),
-  services: z.array(ServiceNameRevPairSchema),
-});
-
-const HttpDeploymentSchema = DeploymentBaseSchema.extend({
-  uri: z.string(),
-  protocol_type: z.enum(["RequestResponse", "BidiStream"]),
-  http_version: z.string(),
-  created_at: z.string(),
-  min_protocol_version: z.number().int(),
-  max_protocol_version: z.number().int(),
-  additional_headers: z.record(z.string()).optional(),
-});
-
-const LambdaDeploymentSchema = DeploymentBaseSchema.extend({
-  arn: z.string(),
-  assume_role_arn: z.string().nullable().optional(),
-  created_at: z.string(),
-  min_protocol_version: z.number().int(),
-  max_protocol_version: z.number().int(),
-  additional_headers: z.record(z.string()).optional(),
-});
-
-const DeploymentResponseSchema = z.union([HttpDeploymentSchema, LambdaDeploymentSchema]);
-const ListDeploymentsResponseSchema = z.object({
-  deployments: z.array(DeploymentResponseSchema),
-});
-
-const RegisterDeploymentResponseSchema = z.object({
-  id: z.string(),
-  services: z.array(z.any()),
-});
 
 let restateTestEnvironment: RestateTestEnvironment;
 let simpleServiceProcess: ChildProcess;
 let restateClient: clients.Ingress;
 let mcpClient: Client;
-
-// Implementation of the Restate service management for testing
-async function fetchWithOptions(url: string, options: RequestInit = {}) {
-  const headers = {
-    "User-Agent": "restate-mcp-server/0.0.1",
-    ...options.headers,
-  };
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      try {
-        const errorJson = JSON.parse(errorText);
-        throw new Error(
-          `${response.status} ${response.statusText}: ${errorJson.message || errorText}`,
-        );
-      } catch {
-        // JSON parse error, use raw text
-        throw new Error(`${response.status} ${response.statusText}: ${errorText}`);
-      }
-    }
-
-    if (response.status === 204 || response.headers.get("Content-Length") === "0") {
-      return null;
-    }
-
-    return await response.json();
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Failed to fetch ${url}: ${error.message}`);
-    }
-    throw error;
-  }
-}
-
-// Restate API client for testing
-const testRestateApi = {
-  async listDeployments() {
-    const data = await fetchWithOptions(`${process.env.RESTATE_API_BASE}/deployments`);
-    return ListDeploymentsResponseSchema.parse(data);
-  },
-
-  async createDeployment(request: { uri: string; force?: boolean }) {
-    const data = await fetchWithOptions(`${process.env.RESTATE_API_BASE}/deployments`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
-    });
-    return RegisterDeploymentResponseSchema.parse(data);
-  },
-};
 
 beforeAll(async () => {
   // Start Restate server
@@ -138,9 +40,8 @@ beforeAll(async () => {
   });
 
   // Wait for service to start
-  await setTimeout(2000);
+  await setTimeout(1000);
 
-  // TODO: remove
   process.env.RESTATE_API_BASE = restateTestEnvironment.adminAPIBaseUrl();
   console.log(`Restate Admin API URL: ${process.env.RESTATE_API_BASE}`);
 
@@ -183,15 +84,24 @@ describe("Restate MCP server", () => {
   });
 
   it("can deploy and list services", async () => {
-    // Deploy the service using the Restate API directly
-    const deploymentData = await testRestateApi.createDeployment({
-      uri: "http://host.docker.internal:9080",
-      force: true,
-    });
+    // Deploy the service using the MCP client
+    const createDeploymentResponse = (await mcpClient.callTool({
+      name: "create-deployment",
+      arguments: {
+        uri: "http://host.docker.internal:9080",
+        force: true,
+      },
+    })) as { content: [{ type; text: string }] };
+
+    expect(createDeploymentResponse.content[0].type).toBe("text");
+    const deploymentData = JSON.parse(createDeploymentResponse.content[0].text);
+
+    console.log("Parsed create-deployment response:", JSON.stringify(deploymentData, null, 2));
 
     expect(deploymentData).toBeDefined();
     expect(deploymentData.id).toBeDefined();
 
+    // List deployments using the MCP client
     const listDeploymentsResponse = (await mcpClient.callTool({
       name: "list-deployments",
       arguments: {},

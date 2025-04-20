@@ -1,108 +1,20 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import {
+  DeploymentResponseSchema,
+  ListDeploymentsResponseSchema,
+  ListServicesResponseSchema,
+  RegisterDeploymentRequestSchema,
+  RegisterDeploymentResponseSchema,
+  ServiceMetadataSchema,
+} from "./schemas.js";
 
 // Define fetch type for Node.js environment
 declare const fetch: (url: string, options?: RequestInit) => Promise<Response>;
 
 const RESTATE_API_BASE = process.env.RESTATE_API_BASE ?? "http://localhost:9070";
 const USER_AGENT = "restate-mcp-server/0.0.1";
-
-// Schema definitions for Restate API responses
-const ServiceNameRevPairSchema = z.object({
-  name: z.string(),
-  revision: z.number().int().min(0),
-});
-
-// Deployment response schemas
-const DeploymentBaseSchema = z.object({
-  id: z.string(),
-  services: z.array(ServiceNameRevPairSchema),
-});
-
-const HttpDeploymentSchema = DeploymentBaseSchema.extend({
-  uri: z.string(),
-  protocol_type: z.enum(["RequestResponse", "BidiStream"]),
-  http_version: z.string(),
-  created_at: z.string(),
-  min_protocol_version: z.number().int(),
-  max_protocol_version: z.number().int(),
-  additional_headers: z.record(z.string()).optional(),
-});
-
-const LambdaDeploymentSchema = DeploymentBaseSchema.extend({
-  arn: z.string(),
-  assume_role_arn: z.string().nullable().optional(),
-  created_at: z.string(),
-  min_protocol_version: z.number().int(),
-  max_protocol_version: z.number().int(),
-  additional_headers: z.record(z.string()).optional(),
-});
-
-const DeploymentResponseSchema = z.union([HttpDeploymentSchema, LambdaDeploymentSchema]);
-const ListDeploymentsResponseSchema = z.object({
-  deployments: z.array(DeploymentResponseSchema),
-});
-
-// Handler metadata schema
-const HandlerMetadataSchema = z.object({
-  name: z.string(),
-  ty: z.enum(["Exclusive", "Shared", "Workflow"]).nullable().optional(),
-  documentation: z.string().nullable().optional(),
-  metadata: z.record(z.string()).optional(),
-  input_description: z.string(),
-  output_description: z.string(),
-  input_json_schema: z.any().nullable().optional(),
-  output_json_schema: z.any().nullable().optional(),
-});
-
-// Service metadata schema
-const ServiceMetadataSchema = z.object({
-  name: z.string(),
-  handlers: z.array(HandlerMetadataSchema),
-  ty: z.enum(["Service", "VirtualObject", "Workflow"]),
-  documentation: z.string().nullable().optional(),
-  metadata: z.record(z.string()).optional(),
-  deployment_id: z.string(),
-  revision: z.number().int().min(0),
-  public: z.boolean(),
-  idempotency_retention: z.string(),
-  workflow_completion_retention: z.string().nullable().optional(),
-  inactivity_timeout: z.string().nullable().optional(),
-  abort_timeout: z.string().nullable().optional(),
-});
-
-const ListServicesResponseSchema = z.object({
-  services: z.array(ServiceMetadataSchema),
-});
-
-// Registration request schemas
-const HttpRegisterDeploymentRequestSchema = z.object({
-  uri: z.string(),
-  additional_headers: z.record(z.string()).nullable().optional(),
-  use_http_11: z.boolean().default(false).optional(),
-  force: z.boolean().default(true).optional(),
-  dry_run: z.boolean().default(false).optional(),
-});
-
-const LambdaRegisterDeploymentRequestSchema = z.object({
-  arn: z.string(),
-  assume_role_arn: z.string().nullable().optional(),
-  additional_headers: z.record(z.string()).nullable().optional(),
-  force: z.boolean().default(true).optional(),
-  dry_run: z.boolean().default(false).optional(),
-});
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const RegisterDeploymentRequestSchema = z.union([
-  HttpRegisterDeploymentRequestSchema,
-  LambdaRegisterDeploymentRequestSchema,
-]);
-
-const RegisterDeploymentResponseSchema = z.object({
-  id: z.string(),
-  services: z.array(ServiceMetadataSchema),
-});
 
 // Implementation of the Restate service management
 async function fetchWithOptions(url: string, options: RequestInit = {}) {
@@ -125,7 +37,6 @@ async function fetchWithOptions(url: string, options: RequestInit = {}) {
           `${response.status} ${response.statusText}: ${errorJson.message || errorText}`,
         );
       } catch {
-        // JSON parse error, use raw text
         throw new Error(`${response.status} ${response.statusText}: ${errorText}`);
       }
     }
@@ -143,7 +54,7 @@ async function fetchWithOptions(url: string, options: RequestInit = {}) {
   }
 }
 
-// Restate API client
+// Restate Admin API client
 const restateApi = {
   async listDeployments() {
     const data = await fetchWithOptions(`${RESTATE_API_BASE}/deployments`);
