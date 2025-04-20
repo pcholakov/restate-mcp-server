@@ -5,15 +5,19 @@
   },
   "scripts": {
     "build": "tsc && chmod 755 build/index.js",
+    "test": "vitest --run",
     "server:dev": "tsx src/index.ts"
   },
   "files": [
     "build"
   ],
   "devDependencies": {
+    "@restatedev/restate-sdk": "^1.5.3",
+    "@restatedev/restate-sdk-testcontainers": "^1.5.3",
     "@types/node": "^22.14.1",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",
