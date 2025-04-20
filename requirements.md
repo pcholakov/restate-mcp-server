@@ -1,4 +1,4 @@
-# CLAUDE.md
+# Requirements
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -39,6 +39,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Expose tools based on the Introspection API to allow for querying running invocations, as well as cancel or kill stuck ones
 - Provide SQL querying capabilities over KV state via the `/query` endpoint with the query-kv-state tool
 - Support viewing service state data with appropriate error handling for different response types
+
+---
+
+# What is Restate?
+
+Restate is a durable execution engine and a suite of SDKs that allow services to be built. Restate acts as a request orchestrator between the caller and the service logic, journaling every processing step. This enables highly robust and correct distribued sytems to be easily built by anyone. There are three core types of Restate services: stateless services (aka just "services"), virtual objects (which provide linearizable access to shared state), and workflows (which are a special case of virtual objects, with run-once semantics and unique execution ids with convenient signals for external events to trigger workflow transitions).
+
+Restate is a partitioned system with keys mapped to distinct internal partitions. Stateless services have an implicit, uniquely-generated key assigned by the system. Stateful services (virtual objects and workflows) have an explicitly provided key that defines the identity of the object. With workflows, that identity becomes the execution id - which cannot be reused once the workflow completes. Stateful services can persist bits of state - usually small, on the order of a few KB - internally within Restate, and access it with the same linearizable semantics as other interactions.
+
+Restate handles idempotency, retries, queueing, and event ordrering within the system, while providing an external HTTP and Kafka request/event ingress capabilities. Within Restate, services can invoke other services with guaranteed delivery and exactly-once-processing semantics. External invocations via the ingress interface should provide an idempotency key to obtain the same guarantees. Restate also allows the system state (both data and metadata) to be introspected via an SQL-based query interface.
 
 ---
 
