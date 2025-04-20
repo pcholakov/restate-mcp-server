@@ -203,7 +203,7 @@ This MCP server provides tools to interact with a Restate admin API.
 - **get-service**: Get details of a specific service
 - **modify-service**: Configure a service (visibility, retention, etc.)
 - **list-invocations**: List all running service invocations
-- **query-kv-state**: Query service KV state using SQL syntax
+- **query**: Query Restate state and metadata using SQL syntax
 
 ## Common Operations
 
@@ -231,23 +231,134 @@ Use \`list-invocations\` to see all currently running service invocations:
 {}
 \`\`\`
 
-### Querying Service State
-Use \`query-kv-state\` to query a service's key-value state using SQL:
+### Querying Restate Data
+Use \`query\` to query Restate's introspection schema using SQL:
 \`\`\`
 {
   "query": "SELECT * FROM state WHERE service_name = 'greeter'"
 }
 \`\`\`
 
-The SQL query uses table name 'state' with these common columns:
-- service_name: Name of the service
-- service_key: Virtual object key (same as objectKey)
-- key: The KV state key
-- value_utf8: String representation of the value
-- value: Binary representation of the value
-- partition_key: Internal Restate partition identifier
+## Introspection Schema Tables
 
-Examples:
+### Table: state
+Query service key-value state data.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`partition_key\` | \`UInt64\` | Internal column that is used for partitioning the services invocations. Can be ignored. |
+| \`service_name\` | \`Utf8\` | The name of the invoked service. |
+| \`service_key\` | \`Utf8\` | The key of the Virtual Object. |
+| \`key\` | \`Utf8\` | The \`utf8\` state key. |
+| \`value_utf8\` | \`Utf8\` | Only contains meaningful values when a service stores state as \`utf8\`. This is the case for services that serialize state using JSON (default for Typescript SDK, Java/Kotlin SDK if using JsonSerdes). |
+| \`value\` | \`Binary\` | A binary, uninterpreted representation of the value. You can use the more specific column \`value_utf8\` if the value is a string. |
+
+### Table: sys_journal
+Query journal entries for service invocations.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`partition_key\` | \`UInt64\` | Internal column that is used for partitioning the services invocations. Can be ignored. |
+| \`id\` | \`Utf8\` | Invocation ID. |
+| \`index\` | \`UInt32\` | The index of this journal entry. |
+| \`entry_type\` | \`Utf8\` | The entry type. |
+| \`name\` | \`Utf8\` | The name of the entry supplied by the user, if any. |
+| \`completed\` | \`Boolean\` | Indicates whether this journal entry has been completed; this is only valid for some entry types. |
+| \`invoked_id\` | \`Utf8\` | If this entry represents an outbound invocation, indicates the ID of that invocation. |
+| \`invoked_target\` | \`Utf8\` | If this entry represents an outbound invocation, indicates the invocation Target. |
+| \`sleep_wakeup_at\` | \`TimestampMillisecond\` | If this entry represents a sleep, indicates wakeup time. |
+| \`promise_name\` | \`Utf8\` | If this entry is a promise related entry, indicates the promise name. |
+| \`raw\` | \`Binary\` | Raw binary representation of the entry. |
+| \`version\` | \`UInt32\` | The journal version. |
+| \`entry_json\` | \`Utf8\` | The entry serialized as a JSON string (only relevant for journal version 2) |
+| \`appended_at\` | \`TimestampMillisecond\` | When the entry was appended to the journal |
+
+### Table: sys_keyed_service_status
+Query status information for keyed services.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`partition_key\` | \`UInt64\` | Internal column that is used for partitioning the services invocations. Can be ignored. |
+| \`service_name\` | \`Utf8\` | The name of the invoked virtual object/workflow. |
+| \`service_key\` | \`Utf8\` | The key of the virtual object/workflow. |
+| \`invocation_id\` | \`Utf8\` | Invocation ID. |
+
+### Table: sys_inbox
+Query inbox entries for services.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`partition_key\` | \`UInt64\` | Internal column that is used for partitioning the services invocations. Can be ignored. |
+| \`service_name\` | \`Utf8\` | The name of the invoked virtual object/workflow. |
+| \`service_key\` | \`Utf8\` | The key of the virtual object/workflow. |
+| \`id\` | \`Utf8\` | Invocation ID. |
+| \`sequence_number\` | \`UInt64\` | Sequence number in the inbox. |
+| \`created_at\` | \`TimestampMillisecond\` | Timestamp indicating the start of this invocation. DEPRECATED: you should not use this field anymore, but join with the sys_invocation table |
+
+### Table: sys_idempotency
+Query idempotency information.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`partition_key\` | \`UInt64\` | Internal column that is used for partitioning the services invocations. Can be ignored. |
+| \`service_name\` | \`Utf8\` | The name of the invoked service. |
+| \`service_key\` | \`Utf8\` | The key of the virtual object or the workflow ID. Null for regular services. |
+| \`service_handler\` | \`Utf8\` | The invoked handler. |
+| \`idempotency_key\` | \`Utf8\` | The user provided idempotency key. |
+| \`invocation_id\` | \`Utf8\` | Invocation ID. |
+
+### Table: sys_promise
+Query workflow promises.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`partition_key\` | \`UInt64\` | Internal column that is used for partitioning the services invocations. Can be ignored. |
+| \`service_name\` | \`Utf8\` | The name of the workflow service. |
+| \`service_key\` | \`Utf8\` | The workflow ID. |
+| \`key\` | \`Utf8\` | The promise key. |
+| \`completed\` | \`Boolean\` | True if the promise was completed. |
+| \`completion_success_value\` | \`Binary\` | The completion success, if any. |
+| \`completion_success_value_utf8\` | \`Utf8\` | The completion success as UTF-8 string, if any. |
+| \`completion_failure\` | \`Utf8\` | The completion failure, if any. |
+
+### Table: sys_service
+Query service metadata.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`name\` | \`Utf8\` | The name of the registered user service. |
+| \`revision\` | \`UInt64\` | The latest deployed revision. |
+| \`public\` | \`Boolean\` | Whether the service is accessible through the ingress endpoint or not. |
+| \`ty\` | \`Utf8\` | The service type. Either \`service\` or \`virtual_object\` or \`workflow\`. |
+| \`deployment_id\` | \`Utf8\` | The ID of the latest deployment |
+
+### Table: sys_deployment
+Query deployment information.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`id\` | \`Utf8\` | The ID of the service deployment. |
+| \`ty\` | \`Utf8\` | The type of the endpoint. Either \`http\` or \`lambda\`. |
+| \`endpoint\` | \`Utf8\` | The address of the endpoint. Either HTTP URL or Lambda ARN. |
+| \`created_at\` | \`TimestampMillisecond\` | Timestamp indicating the deployment registration time. |
+| \`min_service_protocol_version\` | \`UInt32\` | Minimum supported protocol version. |
+| \`max_service_protocol_version\` | \`UInt32\` | Maximum supported protocol version. |
+
+### Table: sys_invocation
+Query invocation details.
+
+| Column name | Type | Description |
+| --- | --- | --- |
+| \`id\` | \`Utf8\` | Invocation ID. |
+| \`target\` | \`Utf8\` | Invocation Target. Format for plain services: \`ServiceName/HandlerName\`, e.g. \`Greeter/greet\`. Format for virtual objects/workflows: \`VirtualObjectName/Key/HandlerName\`, e.g. \`Greeter/Francesco/greet\`. |
+| \`target_service_name\` | \`Utf8\` | The name of the invoked service. |
+| \`target_service_key\` | \`Utf8\` | The key of the virtual object or the workflow ID. Null for regular services. |
+| \`target_handler_name\` | \`Utf8\` | The invoked handler. |
+| \`target_service_ty\` | \`Utf8\` | The service type. Either \`service\` or \`virtual_object\` or \`workflow\`. |
+| \`status\` | \`Utf8\` | Either \`pending\` or \`scheduled\` or \`ready\` or \`running\` or \`backing-off\` or \`suspended\` or \`completed\`. |
+
+## Query Examples
+
 \`\`\`
 // Query all greeter service keys
 "query": "SELECT * FROM state WHERE service_name = 'greeter'"
@@ -255,8 +366,11 @@ Examples:
 // Query specific object key's state
 "query": "SELECT * FROM state WHERE service_name = 'greeter' AND service_key = 'world'"
 
-// Query by specific value
-"query": "SELECT * FROM state WHERE key = 'count' AND value_utf8 = '2'"
+// Query running invocations
+"query": "SELECT * FROM sys_invocation WHERE status = 'running'"
+
+// Query workflow promises
+"query": "SELECT * FROM sys_promise WHERE service_name = 'OrderWorkflow'"
 \`\`\`
 `;
 
@@ -428,14 +542,10 @@ server.tool(
 );
 
 server.tool(
-  "query-kv-state",
-  "Query service KV state using SQL syntax. The table name is 'state' and common columns include 'service_name', 'service_key' (object_key), 'key', and 'value_utf8'.",
+  "query",
+  "Query Restate state and metadata using SQL syntax. Available tables include 'state', 'sys_journal', 'sys_keyed_service_status', 'sys_inbox', 'sys_idempotency', 'sys_promise', 'sys_service', 'sys_deployment', and 'sys_invocation'.",
   {
-    query: z
-      .string()
-      .describe(
-        "SQL query to execute against the KV state (use 'state' as the table name, not 'kv_state')",
-      ),
+    query: z.string().describe("SQL query to execute against Restate's introspection schema"),
   },
   async ({ query }) => {
     const result = await restateApi.queryKVState(query);
