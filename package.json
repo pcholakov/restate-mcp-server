@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc && chmod 755 build/index.js",
     "test": "vitest --run",
-    "server:dev": "tsx src/index.ts"
+    "server:dev": "tsx src/index.ts",
+    "simple-service:dev": "tsx src/test/simple-service.ts"
   },
   "files": [
     "build"

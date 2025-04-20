@@ -1,10 +1,11 @@
 import * as clients from "@restatedev/restate-sdk-clients";
 import { RestateTestEnvironment } from "@restatedev/restate-sdk-testcontainers";
+import { ChildProcess, spawn } from "child_process";
 import { GenericContainer } from "testcontainers";
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
-import { spawn, ChildProcess } from "child_process";
 import { setTimeout } from "timers/promises";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { simpleService } from "./simple-service.js";
 
 // Schema definitions for Restate API responses
 const ServiceNameRevPairSchema = z.object({
@@ -49,7 +50,6 @@ const RegisterDeploymentResponseSchema = z.object({
 
 let restateTestEnvironment: RestateTestEnvironment;
 let restateClient: clients.Ingress;
-let ingressUrl: string;
 let simpleServiceProcess: ChildProcess;
 let originalRestateApiBase: string | undefined;
 
@@ -111,11 +111,11 @@ const testRestateApi = {
 beforeAll(async () => {
   // Save original RESTATE_API_BASE
   originalRestateApiBase = process.env.RESTATE_API_BASE;
-  
+
   // Start Restate server
   restateTestEnvironment = await RestateTestEnvironment.start(
     () =>
-      new GenericContainer("restatedev/restate:1.3.1")
+      new GenericContainer("restatedev/restate:1.3")
         .withEnvironment({ RESTATE_LOG_FORMAT: "compact" })
         .withLogConsumer((stream) => {
           stream.on("data", (line) => console.info(line));
@@ -123,8 +123,7 @@ beforeAll(async () => {
         }),
   );
 
-  ingressUrl = restateTestEnvironment.baseUrl();
-  restateClient = clients.connect({ url: ingressUrl });
+  restateClient = clients.connect({ url: restateTestEnvironment.baseUrl() });
 
   const healthCheckResponse = await fetch(`${restateTestEnvironment.adminAPIBaseUrl()}/health`);
   expect(healthCheckResponse.ok);
@@ -151,11 +150,11 @@ afterAll(async () => {
   if (simpleServiceProcess) {
     simpleServiceProcess.kill();
   }
-  
+
   if (restateTestEnvironment) {
     await restateTestEnvironment.stop();
   }
-  
+
   // Restore original RESTATE_API_BASE
   if (originalRestateApiBase) {
     process.env.RESTATE_API_BASE = originalRestateApiBase;
@@ -171,34 +170,45 @@ describe("Restate MCP server", () => {
       uri: "http://host.docker.internal:9080",
       force: true
     });
-    
+
     expect(deploymentData).toBeDefined();
     expect(deploymentData.id).toBeDefined();
-    
+
     // List deployments
     const listData = await testRestateApi.listDeployments();
-    
+
     expect(listData).toBeDefined();
     expect(listData.deployments).toBeInstanceOf(Array);
-    
+
     // Find our deployment in the list
     const foundDeployment = listData.deployments.find(
       (d) => d.id === deploymentData.id
     );
-    
+
     expect(foundDeployment).toBeDefined();
-    
+
     // Check if it's an HTTP deployment with the expected URI
     if (foundDeployment && 'uri' in foundDeployment) {
       // The URI might have a trailing slash, so we'll check if it starts with the expected value
       expect(foundDeployment.uri.startsWith("http://host.docker.internal:9080")).toBe(true);
     }
-    
+
     // Verify the service is registered
     const serviceFound = deploymentData.services.some(
       (s) => s.name === "SimpleService"
     );
-    
+
     expect(serviceFound).toBe(true);
+  });
+});
+
+describe("Invocation management", () => {
+  it("can list and cancel ongoing invocations", async () => {
+    const client = restateClient.serviceSendClient(simpleService);
+    const handle = await client.longRunning({}, clients.rpc.sendOpts({}));
+
+    console.log(`Submitted long-running invocation: ${handle.invocationId}`);
+
+    // todo: list invocations, cancel long-running, list again to confirm it's gone
   });
 });

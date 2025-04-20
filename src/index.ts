@@ -217,9 +217,7 @@ const restateApi = {
   },
 
   async listInvocations() {
-    // This endpoint isn't officially documented but follows REST conventions
-    const data = await fetchWithOptions(`${RESTATE_API_BASE}/invocations`);
-    return ListInvocationsResponseSchema.parse(data);
+    // TODO: unimplemented; this should be querying the sys_invocation table via SQL introspection
   },
 
   async queryKVState(query: string) {
