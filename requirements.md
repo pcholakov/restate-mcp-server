@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 - Build: `npm run build` (TypeScript compilation)
 - Run: `npm run server:dev` (Run with tsx directly)
+- Test: `npm run test` (Run tests using a Restate test container)
 - The server receives commands via stdio
 
 ## Code Style Guidelines
