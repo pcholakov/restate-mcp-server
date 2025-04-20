@@ -7,16 +7,19 @@ const simpleService = restate.service({
     greet: async (_ctx: restate.Context, name: string) => {
       return `Hello, ${name}!`;
     },
-    longRunning: async (ctx: restate.Context, _: any) => {
+    longRunning: async (ctx: restate.Context, _: unknown) => {
       await ctx.sleep(3600 * 1000);
     },
   },
 });
 
 // Start the server if this file is run directly
-if (process.argv[1]?.endsWith('simple-service.ts') ||
-  process.argv[1]?.endsWith('simple-service.js')) {
-  restate.endpoint()
+if (
+  process.argv[1]?.endsWith("simple-service.ts") ||
+  process.argv[1]?.endsWith("simple-service.js")
+) {
+  restate
+    .endpoint()
     .bind(simpleService)
     .listen(9080)
     .then(() => console.log("Simple service listening on port 9080"));

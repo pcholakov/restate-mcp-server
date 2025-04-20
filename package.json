@@ -1,23 +1,36 @@
 {
   "type": "module",
   "bin": {
-    "server": "./build/index.js"
+    "server": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc && chmod 755 build/index.js",
+    "build": "tsc",
+    "check": "npm run lint && npm run test",
     "test": "vitest --run",
     "server:dev": "tsx src/index.ts",
-    "simple-service:dev": "tsx src/test/simple-service.ts"
+    "simple-service:dev": "tsx src/test/simple-service.ts",
+    "lint": "eslint . --ext .ts && tsc --noEmit && npm run format:check",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
   },
   "files": [
     "build"
   ],
   "devDependencies": {
+    "@eslint/js": "^9.25.0",
     "@restatedev/restate-sdk": "^1.5.3",
     "@restatedev/restate-sdk-testcontainers": "^1.5.3",
     "@types/node": "^22.14.1",
+    "@typescript-eslint/eslint-plugin": "^8.30.1",
+    "@typescript-eslint/parser": "^8.30.1",
+    "eslint": "^9.25.0",
+    "eslint-config-prettier": "^10.1.2",
+    "eslint-plugin-prettier": "^5.2.6",
+    "prettier": "^3.5.3",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.30.1",
     "vitest": "^3.1.1"
   },
   "dependencies": {

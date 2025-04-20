@@ -70,8 +70,11 @@ async function fetchWithOptions(url: string, options: RequestInit = {}) {
       const errorText = await response.text();
       try {
         const errorJson = JSON.parse(errorText);
-        throw new Error(`${response.status} ${response.statusText}: ${errorJson.message || errorText}`);
-      } catch (e) {
+        throw new Error(
+          `${response.status} ${response.statusText}: ${errorJson.message || errorText}`,
+        );
+      } catch {
+        // JSON parse error, use raw text
         throw new Error(`${response.status} ${response.statusText}: ${errorText}`);
       }
     }
@@ -96,7 +99,7 @@ const testRestateApi = {
     return ListDeploymentsResponseSchema.parse(data);
   },
 
-  async createDeployment(request: { uri: string, force?: boolean }) {
+  async createDeployment(request: { uri: string; force?: boolean }) {
     const data = await fetchWithOptions(`${process.env.RESTATE_API_BASE}/deployments`, {
       method: "POST",
       headers: {
@@ -105,7 +108,7 @@ const testRestateApi = {
       body: JSON.stringify(request),
     });
     return RegisterDeploymentResponseSchema.parse(data);
-  }
+  },
 };
 
 beforeAll(async () => {
@@ -113,14 +116,13 @@ beforeAll(async () => {
   originalRestateApiBase = process.env.RESTATE_API_BASE;
 
   // Start Restate server
-  restateTestEnvironment = await RestateTestEnvironment.start(
-    () =>
-      new GenericContainer("restatedev/restate:1.3")
-        .withEnvironment({ RESTATE_LOG_FORMAT: "compact" })
-        .withLogConsumer((stream) => {
-          stream.on("data", (line) => console.info(line));
-          stream.on("err", (line) => console.error(line));
-        }),
+  restateTestEnvironment = await RestateTestEnvironment.start(() =>
+    new GenericContainer("restatedev/restate:1.3")
+      .withEnvironment({ RESTATE_LOG_FORMAT: "compact" })
+      .withLogConsumer((stream) => {
+        stream.on("data", (line) => console.info(line));
+        stream.on("err", (line) => console.error(line));
+      }),
   );
 
   restateClient = clients.connect({ url: restateTestEnvironment.baseUrl() });
@@ -129,11 +131,11 @@ beforeAll(async () => {
   expect(healthCheckResponse.ok);
 
   // Start our simple service on port 9080
-  simpleServiceProcess = spawn('tsx', ['src/test/simple-service.ts']);
-  simpleServiceProcess.stdout?.on('data', (data) => {
+  simpleServiceProcess = spawn("tsx", ["src/test/simple-service.ts"]);
+  simpleServiceProcess.stdout?.on("data", (data) => {
     console.log(`Simple service: ${data}`);
   });
-  simpleServiceProcess.stderr?.on('data', (data) => {
+  simpleServiceProcess.stderr?.on("data", (data) => {
     console.error(`Simple service error: ${data}`);
   });
 
@@ -168,7 +170,7 @@ describe("Restate MCP server", () => {
     // Deploy the service using the Restate API directly
     const deploymentData = await testRestateApi.createDeployment({
       uri: "http://host.docker.internal:9080",
-      force: true
+      force: true,
     });
 
     expect(deploymentData).toBeDefined();
@@ -181,22 +183,18 @@ describe("Restate MCP server", () => {
     expect(listData.deployments).toBeInstanceOf(Array);
 
     // Find our deployment in the list
-    const foundDeployment = listData.deployments.find(
-      (d) => d.id === deploymentData.id
-    );
+    const foundDeployment = listData.deployments.find((d) => d.id === deploymentData.id);
 
     expect(foundDeployment).toBeDefined();
 
     // Check if it's an HTTP deployment with the expected URI
-    if (foundDeployment && 'uri' in foundDeployment) {
+    if (foundDeployment && "uri" in foundDeployment) {
       // The URI might have a trailing slash, so we'll check if it starts with the expected value
       expect(foundDeployment.uri.startsWith("http://host.docker.internal:9080")).toBe(true);
     }
 
     // Verify the service is registered
-    const serviceFound = deploymentData.services.some(
-      (s) => s.name === "SimpleService"
-    );
+    const serviceFound = deploymentData.services.some((s) => s.name === "SimpleService");
 
     expect(serviceFound).toBe(true);
   });

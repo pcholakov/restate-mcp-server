@@ -2,10 +2,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
+// Define fetch type for Node.js environment
+declare const fetch: (url: string, options?: RequestInit) => Promise<Response>;
+
 const RESTATE_API_BASE = "http://localhost:9070";
 const USER_AGENT = "restate-mcp-server/0.0.1";
 
 // Schema definitions for Restate API responses
+// Used for documentation and type checking
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ErrorDescriptionSchema = z.object({
   message: z.string(),
   restate_code: z.string().nullable(),
@@ -89,15 +94,18 @@ const InvocationSchema = z.object({
   object_key: z.string().optional(),
 });
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ListInvocationsResponseSchema = z.object({
   invocations: z.array(InvocationSchema),
 });
 
 // KV State query schema
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const KVStateQueryRequestSchema = z.object({
-  query: z.string()
+  query: z.string(),
 });
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const KVStateQueryResponseSchema = z.object({
   rows: z.array(z.record(z.string(), z.any())),
 });
@@ -119,6 +127,7 @@ const LambdaRegisterDeploymentRequestSchema = z.object({
   dry_run: z.boolean().default(false).optional(),
 });
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const RegisterDeploymentRequestSchema = z.union([
   HttpRegisterDeploymentRequestSchema,
   LambdaRegisterDeploymentRequestSchema,
@@ -146,8 +155,11 @@ async function fetchWithOptions(url: string, options: RequestInit = {}) {
       const errorText = await response.text();
       try {
         const errorJson = JSON.parse(errorText);
-        throw new Error(`${response.status} ${response.statusText}: ${errorJson.message || errorText}`);
-      } catch (e) {
+        throw new Error(
+          `${response.status} ${response.statusText}: ${errorJson.message || errorText}`,
+        );
+      } catch {
+        // JSON parse error, use raw text
         throw new Error(`${response.status} ${response.statusText}: ${errorText}`);
       }
     }
@@ -205,7 +217,10 @@ const restateApi = {
     return ServiceMetadataSchema.parse(data);
   },
 
-  async modifyService(serviceName: string, options: { public?: boolean, idempotency_retention?: string }) {
+  async modifyService(
+    serviceName: string,
+    options: { public?: boolean; idempotency_retention?: string },
+  ) {
     const data = await fetchWithOptions(`${RESTATE_API_BASE}/services/${serviceName}`, {
       method: "PATCH",
       headers: {
@@ -217,7 +232,22 @@ const restateApi = {
   },
 
   async listInvocations() {
-    // TODO: unimplemented; this should be querying the sys_invocation table via SQL introspection
+    // Query the sys_invocation table via SQL introspection
+    const query = "SELECT * FROM sys_invocation WHERE status = 'Running'";
+    const result = await this.queryKVState(query);
+
+    // Transform the result to match the expected schema
+    const invocations = (result.rows || []).map((row: Record<string, unknown>) => ({
+      id: row.id || "",
+      service: row.service_name || "",
+      handler: row.handler_name || "",
+      status: row.status || "Running",
+      started_at: row.started_at || new Date().toISOString(),
+      completed_at: row.completed_at || null,
+      object_key: row.object_key || undefined,
+    }));
+
+    return { invocations };
   },
 
   async queryKVState(query: string) {
@@ -225,31 +255,32 @@ const restateApi = {
     try {
       // Directly use fetch with proper handling for potential binary response
       const response = await fetch(`${RESTATE_API_BASE}/query`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': USER_AGENT,
-          'Accept': 'application/json'
+          "Content-Type": "application/json",
+          "User-Agent": USER_AGENT,
+          Accept: "application/json",
         },
-        body: JSON.stringify({ query })
+        body: JSON.stringify({ query }),
       });
-      
+
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Server error: ${response.status} ${response.statusText} - ${text}`);
       }
-      
+
       // Check content type to avoid parsing binary data
-      const contentType = response.headers.get('Content-Type');
-      if (contentType && !contentType.includes('application/json')) {
+      const contentType = response.headers.get("Content-Type");
+      if (contentType && !contentType.includes("application/json")) {
         throw new Error(`Unexpected response type: ${contentType}`);
       }
-      
+
       // Get as text first to catch any JSON parse errors
       const textResponse = await response.text();
       try {
         return JSON.parse(textResponse);
-      } catch (e) {
+      } catch {
+        // JSON parse error
         throw new Error(`Invalid JSON response: ${textResponse.substring(0, 50)}...`);
       }
     } catch (error) {
@@ -381,7 +412,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
@@ -400,7 +431,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
@@ -419,7 +450,7 @@ server.tool(
       use_http_11: useHttp11,
       force,
     };
-    
+
     const result = await restateApi.createDeployment(request);
     return {
       content: [
@@ -429,7 +460,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
@@ -449,7 +480,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
@@ -466,7 +497,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
@@ -485,7 +516,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
@@ -497,16 +528,16 @@ server.tool(
     idempotencyRetention: z.string().optional().describe("Idempotency retention duration"),
   },
   async ({ serviceName, isPublic, idempotencyRetention }) => {
-    const options: { public?: boolean, idempotency_retention?: string } = {};
-    
+    const options: { public?: boolean; idempotency_retention?: string } = {};
+
     if (isPublic !== undefined) {
       options.public = isPublic;
     }
-    
+
     if (idempotencyRetention !== undefined) {
       options.idempotency_retention = idempotencyRetention;
     }
-    
+
     const result = await restateApi.modifyService(serviceName, options);
     return {
       content: [
@@ -516,7 +547,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
@@ -533,14 +564,18 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
   "query-kv-state",
   "Query service KV state using SQL syntax. The table name is 'state' and common columns include 'service_name', 'service_key' (object_key), 'key', and 'value_utf8'.",
   {
-    query: z.string().describe("SQL query to execute against the KV state (use 'state' as the table name, not 'kv_state')"),
+    query: z
+      .string()
+      .describe(
+        "SQL query to execute against the KV state (use 'state' as the table name, not 'kv_state')",
+      ),
   },
   async ({ query }) => {
     const result = await restateApi.queryKVState(query);
@@ -552,13 +587,13 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 // Register documentation resources
 server.resource(
   "restate-overview",
-  "restate-overview", 
+  "restate-overview",
   {
     description: "Overview of Restate architecture and concepts",
   },
@@ -571,7 +606,7 @@ server.resource(
         },
       ],
     };
-  }
+  },
 );
 
 server.resource(
@@ -589,7 +624,7 @@ server.resource(
         },
       ],
     };
-  }
+  },
 );
 
 // Start the server

@@ -1,0 +1,27 @@
+# Build output
+build/
+dist/
+
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Coverage directory
+coverage/
+
+# Cache
+.cache/
+.npm/
+
+# Environment variables
+.env
+.env.*
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
